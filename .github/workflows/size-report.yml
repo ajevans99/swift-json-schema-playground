@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 # Builds the same artifacts as the deploy workflow (Swift→Wasm validator and
 # the Vite bundle) on every pull request and posts a sticky comment showing
-# raw + gzip sizes. Also emits `dist/.size-report.json` as a build artifact —
+# raw + gzip sizes. Also emits `dist/size-report.json` as a build artifact —
 # groundwork for a future README badge that pulls from a Pages-hosted JSON.
 #
 # Steps are duplicated (rather than refactored) from `deploy.yml` on purpose:
@@ -230,7 +230,7 @@ jobs:
           # `endpoint` badge expects, so a future commit can simply point a
           # badge at a Pages-hosted copy of this file.
           mkdir -p dist
-          cat > dist/.size-report.json <<JSON
+          cat > dist/size-report.json <<JSON
           {
             "schemaVersion": 1,
             "label": "validator.wasm (gz)",
@@ -246,13 +246,13 @@ jobs:
           }
           JSON
 
-          cat dist/.size-report.json
+          cat dist/size-report.json
 
       - name: Upload size report JSON
         uses: actions/upload-artifact@v4
         with:
           name: size-report
-          path: playground/dist/.size-report.json
+          path: playground/dist/size-report.json
           if-no-files-found: error
 
       # ---- Render the markdown table --------------------------------------
