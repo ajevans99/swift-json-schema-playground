@@ -24,9 +24,14 @@ import {
 
 import { SwiftRuntime } from './runtime/runtime.mjs'
 import type { ValidatorRequest, ValidatorResponse, ValidationOutcome } from './types.ts'
+import { createRemoteResolver } from './remoteRefs'
 
 declare const self: DedicatedWorkerGlobalScope & {
-  swiftValidate?: (schema: string, instance: string) => string
+  swiftValidate?: (
+    schema: string,
+    instance: string,
+    remoteSchemasJSON?: string,
+  ) => string
 }
 
 // All BridgeJS (`bjs:`) imports the wasm module declares. The Swift code we
@@ -191,6 +196,11 @@ async function instantiateWasm(): Promise<void> {
 
 const ready: Promise<void> = instantiateWasm()
 
+// One resolver per worker — its cache lives for the lifetime of the worker
+// so the same external `$ref` URLs are only fetched once across many
+// keystroke-driven validations.
+const remoteResolver = createRemoteResolver()
+
 self.addEventListener('message', async (event: MessageEvent<ValidatorRequest>) => {
   const { id, schema, instance } = event.data
 
@@ -201,7 +211,12 @@ self.addEventListener('message', async (event: MessageEvent<ValidatorRequest>) =
     if (typeof fn !== 'function') {
       throw new Error('swiftValidate is not registered on globalThis')
     }
-    const json = fn(schema, instance)
+    // Pre-fetch any external $refs the schema points at. Failed fetches
+    // are swallowed inside the resolver — the validator will surface
+    // "Unable to resolve $ref" for those URLs as before.
+    const remote = await remoteResolver.resolve(schema)
+    const remoteSchemasJSON = Object.keys(remote).length > 0 ? JSON.stringify(remote) : ''
+    const json = fn(schema, instance, remoteSchemasJSON)
     const result = JSON.parse(json) as ValidationOutcome
     response = { id, ok: true, result }
   } catch (err) {
