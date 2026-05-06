@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Header } from './components/Header'
 import { SchemaEditor } from './components/SchemaEditor'
 import { InstanceEditor } from './components/InstanceEditor'
 import { ResultsPanel } from './components/ResultsPanel'
+import { loadPersistedState, savePersistedState } from './storage'
 
 const DEFAULT_SCHEMA = `${JSON.stringify(
   {
@@ -17,8 +18,19 @@ const DEFAULT_SCHEMA = `${JSON.stringify(
 const DEFAULT_INSTANCE = `${JSON.stringify({ name: 'Alice' }, null, 2)}\n`
 
 function App() {
-  const [schema, setSchema] = useState(DEFAULT_SCHEMA)
-  const [instance, setInstance] = useState(DEFAULT_INSTANCE)
+  const [schema, setSchema] = useState<string>(
+    () => loadPersistedState()?.schema ?? DEFAULT_SCHEMA,
+  )
+  const [instance, setInstance] = useState<string>(
+    () => loadPersistedState()?.instance ?? DEFAULT_INSTANCE,
+  )
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      savePersistedState({ schema, instance })
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [schema, instance])
 
   return (
     <div className="flex h-screen min-h-0 flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
