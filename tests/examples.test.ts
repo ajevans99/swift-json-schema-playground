@@ -81,7 +81,7 @@ describe('registry', () => {
   })
 
   test('findExampleById returns the right example or null', () => {
-    expect(findExampleById('openapi-3.1')?.name).toBe('OpenAPI 3.1')
+    expect(findExampleById('openapi-3.1')?.name).toMatch(/^OpenAPI 3\.1/)
     expect(findExampleById('not-a-real-id')).toBeNull()
     expect(findExampleById(null)).toBeNull()
     expect(findExampleById(undefined)).toBeNull()

@@ -157,9 +157,9 @@ export const EXAMPLES: Example[] = [
   },
   {
     id: 'openapi-3.1',
-    name: 'OpenAPI 3.1',
+    name: 'OpenAPI 3.1 (⚠ known issue)',
     description:
-      'OpenAPI 3.1 specification schema with a tiny Petstore sample.',
+      'OpenAPI 3.1 specification schema with a tiny Petstore sample. Currently surfaces validation errors due to a known $dynamicRef resolution gap in swift-json-schema — see swift-json-schema-suggestions.md.',
     schemaURL: 'https://spec.openapis.org/oas/3.1/schema/2022-10-07',
     instance: OPENAPI_PETSTORE,
   },
