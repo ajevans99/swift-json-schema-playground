@@ -94,6 +94,14 @@ jobs:
       # ---- Swift toolchain (via swiftly) ----------------------------------
       # SOURCE: https://www.swift.org/install/linux/  (Swiftly installer flow)
       # SOURCE: https://github.com/swiftlang/swiftly  (CLI reference)
+      - name: Install Swift system dependencies
+        run: |
+          set -euxo pipefail
+          # Swift 6.3 on Ubuntu requires libcurl4-openssl-dev. Without it,
+          # `swiftly install` exits non-zero after a successful download.
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev
+
       - name: Cache swiftly toolchain
         id: cache-swiftly
         uses: actions/cache@v4
