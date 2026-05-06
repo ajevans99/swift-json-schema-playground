@@ -121,12 +121,34 @@ fi
 echo "==> Using Swift SDK: ${WASM_SDK_ID}"
 
 # ---- Build ------------------------------------------------------------------
-
+#
+# Size-targeted compiler/linker flags. Notes:
+#   * `-Osize` tells the Swift optimizer to favor binary size over speed.
+#     We don't ship the wasm to a perf-critical hot loop — validation runs
+#     once per debounced edit — so trading a little runtime speed for ~tens
+#     of MiB on disk is a clear win.
+#   * `-wmo` enables whole-module optimization, which helps the linker
+#     dead-strip unused code across files.
+#   * `-gnone` drops debug info entirely. Swift's DWARF is enormous on wasm
+#     (often >50% of the artifact). Stack traces from end users will lose
+#     symbol names, but that's an acceptable trade for the playground.
+#
+# Note on linker flags: we deliberately do NOT pass `-Xlinker --gc-sections`
+# / `-Xlinker --strip-all` here, even though wasm-ld supports them. SwiftPM
+# applies `-Xlinker` to every link invocation in the build graph — including
+# host-side SwiftSyntax macro tools (e.g. BridgeJSMacros) that link with the
+# native macOS `ld`, which does not understand those GNU/wasm-ld flags and
+# will fail the whole build. Stripping and dead-section removal are handled
+# instead by the `wasm-opt` post-pass below, which is wasm-only and at least
+# as effective.
 echo "==> Building ${PRODUCT_NAME} for ${TRIPLE} (${CONFIGURATION})..."
 swift build \
   --swift-sdk "${WASM_SDK_ID}" \
   -c "${CONFIGURATION}" \
-  --product "${PRODUCT_NAME}"
+  --product "${PRODUCT_NAME}" \
+  -Xswiftc -Osize \
+  -Xswiftc -wmo \
+  -Xswiftc -gnone
 
 BUILT_WASM="${SCRIPT_DIR}/.build/${TRIPLE}/${CONFIGURATION}/${PRODUCT_NAME}.wasm"
 
@@ -142,13 +164,52 @@ fi
 mkdir -p "${OUTPUT_DIR}"
 cp "${BUILT_WASM}" "${OUTPUT_PATH}"
 
+# ---- Post-process with wasm-opt (binaryen) ----------------------------------
+#
+# `wasm-opt -Oz` runs binaryen's size-targeted optimization passes over the
+# already-built module. On SwiftWasm artifacts this typically reclaims 40–60%
+# more on top of the compiler-side flags above (vacuum, dead-code elimination,
+# duplicate-function merging, etc.). The `--strip-debug` / `--strip-producers`
+# flags drop the residual `name` and `producers` custom sections.
+#
+# We treat wasm-opt as optional: if it isn't installed, the script still
+# produces a valid (just larger) artifact and prints a hint.
+if command -v wasm-opt >/dev/null 2>&1; then
+  PRE_OPT_BYTES="$(stat -f%z "${OUTPUT_PATH}" 2>/dev/null || stat -c%s "${OUTPUT_PATH}")"
+  PRE_OPT_HUMAN="$(awk -v b="${PRE_OPT_BYTES}" 'BEGIN { printf "%.1f MiB", b / 1024 / 1024 }')"
+  echo "==> wasm-opt -Oz (pre: ${PRE_OPT_BYTES} bytes / ${PRE_OPT_HUMAN})..."
+  wasm-opt \
+    -Oz \
+    --strip-debug \
+    --strip-producers \
+    --vacuum \
+    "${OUTPUT_PATH}" \
+    -o "${OUTPUT_PATH}.opt"
+  mv "${OUTPUT_PATH}.opt" "${OUTPUT_PATH}"
+else
+  cat >&2 <<EOF
+warning: wasm-opt (binaryen) not found on PATH — skipping size-optimization
+         post-pass. Install it for a much smaller artifact:
+
+             brew install binaryen        # macOS
+             apt-get install -y binaryen  # Debian / Ubuntu
+
+EOF
+fi
+
 # ---- Report -----------------------------------------------------------------
 
 WASM_SIZE_BYTES="$(stat -f%z "${OUTPUT_PATH}" 2>/dev/null || stat -c%s "${OUTPUT_PATH}")"
 WASM_SIZE_HUMAN="$(awk -v b="${WASM_SIZE_BYTES}" 'BEGIN { printf "%.1f MiB", b / 1024 / 1024 }')"
 
+# Approximate over-the-wire size: GitHub Pages auto-serves wasm with gzip,
+# so this is closer to what users actually pay than the raw size.
+WASM_GZIP_BYTES="$(gzip -9 -c "${OUTPUT_PATH}" | wc -c | tr -d ' ')"
+WASM_GZIP_HUMAN="$(awk -v b="${WASM_GZIP_BYTES}" 'BEGIN { printf "%.1f MiB", b / 1024 / 1024 }')"
+
 echo
-echo "==> Built:    ${BUILT_WASM}"
-echo "==> Copied:   ${OUTPUT_PATH}"
-echo "==> Size:     ${WASM_SIZE_BYTES} bytes (${WASM_SIZE_HUMAN})"
+echo "==> Built:        ${BUILT_WASM}"
+echo "==> Copied:       ${OUTPUT_PATH}"
+echo "==> Size (raw):   ${WASM_SIZE_BYTES} bytes (${WASM_SIZE_HUMAN})"
+echo "==> Size (gzip):  ${WASM_GZIP_BYTES} bytes (${WASM_GZIP_HUMAN})"
 file "${OUTPUT_PATH}" || true
