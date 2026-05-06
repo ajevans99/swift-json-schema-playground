@@ -1,4 +1,5 @@
 import Editor from '@monaco-editor/react'
+import type * as monaco from 'monaco-editor'
 import { useMonacoTheme } from '../editor/useMonacoTheme'
 
 interface MonacoJsonEditorProps {
@@ -6,9 +7,19 @@ interface MonacoJsonEditorProps {
   onChange: (next: string) => void
   path: string
   ariaLabel?: string
+  onMount?: (
+    editor: monaco.editor.IStandaloneCodeEditor,
+    monacoNs: typeof monaco,
+  ) => void
 }
 
-export function MonacoJsonEditor({ value, onChange, path, ariaLabel }: MonacoJsonEditorProps) {
+export function MonacoJsonEditor({
+  value,
+  onChange,
+  path,
+  ariaLabel,
+  onMount,
+}: MonacoJsonEditorProps) {
   const theme = useMonacoTheme()
 
   return (
@@ -20,6 +31,9 @@ export function MonacoJsonEditor({ value, onChange, path, ariaLabel }: MonacoJso
         value={value}
         path={path}
         onChange={(next) => onChange(next ?? '')}
+        onMount={(editor, monacoNs) => {
+          onMount?.(editor, monacoNs)
+        }}
         options={{
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
