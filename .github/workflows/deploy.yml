@@ -1,0 +1,192 @@
+# =============================================================================
+# Deploy to GitHub Pages
+# -----------------------------------------------------------------------------
+# Builds the Swift→WebAssembly validator (`wasm/build.sh`), builds the Vite
+# app, and deploys `dist/` to GitHub Pages using the modern Pages flow
+# (configure-pages / upload-pages-artifact / deploy-pages — no `gh-pages`
+# branch, no force-pushing).
+#
+# One-time setup the repo owner must do:
+#   1. Push this repo to GitHub.
+#   2. In the repo: Settings → Pages → Build and deployment → Source =
+#      "GitHub Actions". (No need to pre-create a branch.)
+#   3. If your fork of `swift-json-schema` lives at a different path, update
+#      `VALIDATOR_REPO` (and/or `VALIDATOR_REF`) below. If that repo is
+#      private, also add a deploy token / PAT and pass it to the second
+#      `actions/checkout` via the `token:` input — the default `GITHUB_TOKEN`
+#      can only read the current repo.
+#
+# How the two-checkout layout works:
+#   `wasm/Package.swift` declares a path-based dependency on
+#   `../../swift-json-schema`. We check both repos out as siblings under
+#   `$GITHUB_WORKSPACE/`:
+#
+#       $GITHUB_WORKSPACE/
+#       ├── playground/            <- this repo
+#       │   └── wasm/Package.swift  (looks for ../../swift-json-schema)
+#       └── swift-json-schema/     <- sibling, checked out by step #2
+#
+#   From inside `playground/wasm/`, `../../swift-json-schema` resolves to
+#   `$GITHUB_WORKSPACE/swift-json-schema`. ✅
+# =============================================================================
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deploy at a time; cancel any in-flight build that has been
+# superseded.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  # Sibling Swift package that wasm/Package.swift depends on via a relative
+  # path. Edit if your fork lives elsewhere.
+  VALIDATOR_REPO: ajevans99/swift-json-schema
+  VALIDATOR_REF: main
+
+  # Must match wasm/build.sh.
+  SWIFT_VERSION: "6.3.1"
+
+  # SwiftWasm SDK pinned to the same release/checksum as wasm/build.sh.
+  # Source: wasm/build.sh (WASM_SDK_URL / WASM_SDK_CHECKSUM).
+  WASM_SDK_URL: "https://download.swift.org/swift-6.3.1-release/wasm-sdk/swift-6.3.1-RELEASE/swift-6.3.1-RELEASE_wasm.artifactbundle.tar.gz"
+  WASM_SDK_CHECKSUM: "bd47baa20771f366d8beed7970afaa30742b2210097afd15f85427226d8f4cf2"
+
+  # Pin swiftly's home dir so build.sh's `~/.swiftly/env.sh` lookup also
+  # works (build.sh hard-codes that path).
+  SWIFTLY_HOME_DIR: /home/runner/.swiftly
+  SWIFTLY_BIN_DIR: /home/runner/.swiftly/bin
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout playground
+        uses: actions/checkout@v4
+        with:
+          path: playground
+
+      - name: Checkout swift-json-schema (sibling repo for wasm/Package.swift path dep)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.VALIDATOR_REPO }}
+          ref: ${{ env.VALIDATOR_REF }}
+          path: swift-json-schema
+
+      - name: Verify sibling layout
+        run: |
+          set -euxo pipefail
+          ls -la
+          test -f swift-json-schema/Package.swift
+          test -f playground/wasm/Package.swift
+          test -x playground/wasm/build.sh
+
+      # ---- Swift toolchain (via swiftly) ----------------------------------
+      # SOURCE: https://www.swift.org/install/linux/  (Swiftly installer flow)
+      # SOURCE: https://github.com/swiftlang/swiftly  (CLI reference)
+      - name: Cache swiftly toolchain
+        id: cache-swiftly
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/.swiftly
+          key: swiftly-${{ runner.os }}-${{ runner.arch }}-${{ env.SWIFT_VERSION }}-v1
+
+      - name: Install swiftly + Swift ${{ env.SWIFT_VERSION }}
+        if: steps.cache-swiftly.outputs.cache-hit != 'true'
+        run: |
+          set -euxo pipefail
+          curl -fsSLO "https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz"
+          tar zxf "swiftly-$(uname -m).tar.gz"
+          ./swiftly init --quiet-shell-followup --assume-yes --skip-install
+          # shellcheck disable=SC1091
+          . "${SWIFTLY_HOME_DIR}/env.sh"
+          swiftly install --use "${SWIFT_VERSION}"
+
+      - name: Put swift on PATH for subsequent steps
+        run: |
+          set -euxo pipefail
+          # swiftly's shim dir holds the `swift`, `clang`, etc. wrappers that
+          # forward to the active toolchain.
+          echo "${SWIFTLY_BIN_DIR}" >> "$GITHUB_PATH"
+          # Sanity check in this step too.
+          # shellcheck disable=SC1091
+          . "${SWIFTLY_HOME_DIR}/env.sh"
+          swift --version
+
+      # ---- Swift WebAssembly SDK ------------------------------------------
+      - name: Cache SwiftWasm SDK
+        id: cache-wasm-sdk
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/.swiftpm/swift-sdks
+            /home/runner/.config/swiftpm/swift-sdks
+          key: swift-wasm-sdk-${{ runner.os }}-${{ runner.arch }}-${{ env.SWIFT_VERSION }}-${{ env.WASM_SDK_CHECKSUM }}
+
+      - name: Install SwiftWasm SDK
+        if: steps.cache-wasm-sdk.outputs.cache-hit != 'true'
+        run: |
+          set -euxo pipefail
+          # shellcheck disable=SC1091
+          . "${SWIFTLY_HOME_DIR}/env.sh"
+          swift sdk install "${WASM_SDK_URL}" --checksum "${WASM_SDK_CHECKSUM}"
+          swift sdk list
+
+      # ---- Build the WASM validator ---------------------------------------
+      - name: Build WASM (wasm/build.sh)
+        working-directory: playground/wasm
+        run: |
+          set -euxo pipefail
+          ./build.sh
+          ls -lh ../public/validator.wasm
+
+      # ---- Build the Vite site --------------------------------------------
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: playground/package-lock.json
+
+      - name: Install npm deps
+        working-directory: playground
+        run: npm ci
+
+      - name: Run tests
+        working-directory: playground
+        run: npm test
+
+      - name: Build site
+        working-directory: playground
+        run: npm run build
+
+      # ---- Upload as Pages artifact ---------------------------------------
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: playground/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
