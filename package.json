@@ -19,6 +19,7 @@
     "react-dom": "^19.2.5"
   },
   "devDependencies": {
+    "@bjorn3/browser_wasi_shim": "^0.4.2",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.2.4",
     "@testing-library/jest-dom": "^6.9.1",
