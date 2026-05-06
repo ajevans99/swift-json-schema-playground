@@ -248,6 +248,16 @@ function App() {
     }
   }, [])
 
+  const handleClearSchema = useCallback(() => {
+    setSchema('')
+    handleClearExample()
+  }, [handleClearExample])
+
+  const handleClearInstance = useCallback(() => {
+    setInstance('')
+    handleClearExample()
+  }, [handleClearExample])
+
   // Persist schema/instance to localStorage (300 ms debounce).
   useEffect(() => {
     const handle = setTimeout(() => {
@@ -379,6 +389,7 @@ function App() {
           <SchemaEditor
             value={schema}
             onChange={handleSchemaChange}
+            onClear={handleClearSchema}
             onMount={(editor, monacoNs) => {
               schemaEditorRef.current = editor
               monacoRef.current = monacoNs
@@ -387,6 +398,7 @@ function App() {
           <InstanceEditor
             value={instance}
             onChange={handleInstanceChange}
+            onClear={handleClearInstance}
             onMount={(editor, monacoNs) => {
               instanceEditorRef.current = editor
               monacoRef.current = monacoNs

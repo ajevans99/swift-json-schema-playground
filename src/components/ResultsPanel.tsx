@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useState } from 'react'
 import type { ValidationError } from '../types'
 
 export type ResultsState = 'idle' | 'validating' | 'valid' | 'invalid' | 'error'
@@ -32,23 +33,138 @@ function summary(state: ResultsState, errorCount: number): string {
   }
 }
 
+interface ResultPayload {
+  valid: boolean
+  errors: ValidationError[]
+  runtimeError?: string
+}
+
+/**
+ * Build the JSON payload exposed via Copy / Download. Mirrors the shape the
+ * Swift WASM validator returns over the wire (`{ valid, errors }`), with an
+ * optional `runtimeError` field for the rare `state === 'error'` path so
+ * downloaders see *something* instead of an empty errors array.
+ */
+function buildResultPayload(
+  state: ResultsState,
+  errors: ValidationError[],
+  errorMessage: string | null | undefined,
+): ResultPayload {
+  if (state === 'error') {
+    return {
+      valid: false,
+      errors: [],
+      runtimeError: errorMessage ?? 'Unknown validator error',
+    }
+  }
+  return { valid: state === 'valid', errors }
+}
+
+function formatPayload(payload: ResultPayload): string {
+  return `${JSON.stringify(payload, null, 2)}\n`
+}
+
+function downloadFilename(): string {
+  const ts = new Date().toISOString().replace(/[:.]/g, '-')
+  return `validation-result-${ts}.json`
+}
+
+/** Trigger a browser download of `text` as `filename`. */
+function triggerDownload(text: string, filename: string): void {
+  const blob = new Blob([text], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  document.body.removeChild(anchor)
+  // Defer revoke so the browser has a chance to start the download.
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+/** Copy text to clipboard, returning whether the copy succeeded. */
+async function copyToClipboard(text: string): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+    return false
+  }
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function ResultsPanel({
   errors,
   state,
   errorMessage,
   onErrorClick,
 }: ResultsPanelProps) {
+  const exportable = state === 'valid' || state === 'invalid' || state === 'error'
+
+  // "Copied!" badge state — flips back to "Copy" after a moment.
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>(
+    'idle',
+  )
+  useEffect(() => {
+    if (copyState === 'idle') return
+    const handle = setTimeout(() => setCopyState('idle'), 1500)
+    return () => clearTimeout(handle)
+  }, [copyState])
+
+  const handleCopy = useCallback(async () => {
+    const text = formatPayload(buildResultPayload(state, errors, errorMessage))
+    const ok = await copyToClipboard(text)
+    setCopyState(ok ? 'copied' : 'failed')
+  }, [state, errors, errorMessage])
+
+  const handleDownload = useCallback(() => {
+    const text = formatPayload(buildResultPayload(state, errors, errorMessage))
+    triggerDownload(text, downloadFilename())
+  }, [state, errors, errorMessage])
+
+  const copyLabel =
+    copyState === 'copied'
+      ? 'Copied!'
+      : copyState === 'failed'
+        ? 'Copy failed'
+        : 'Copy'
+
   return (
     <section className="flex h-64 shrink-0 flex-col border-t border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
       <header className="flex items-center justify-between border-b border-slate-200 px-3 py-2 dark:border-slate-800">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
           Results
         </h2>
-        <span
-          className={`text-[11px] font-medium uppercase tracking-wide ${STATE_TONE[state]}`}
-        >
-          {summary(state, errors.length)}
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleCopy}
+            disabled={!exportable}
+            className="rounded border border-slate-300 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            title="Copy validation result JSON to clipboard"
+            aria-label="Copy validation result JSON to clipboard"
+          >
+            {copyLabel}
+          </button>
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={!exportable}
+            className="rounded border border-slate-300 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            title="Download validation result as JSON"
+            aria-label="Download validation result as JSON"
+          >
+            Download
+          </button>
+          <span
+            className={`text-[11px] font-medium uppercase tracking-wide ${STATE_TONE[state]}`}
+          >
+            {summary(state, errors.length)}
+          </span>
+        </div>
       </header>
       <div className="min-h-0 flex-1 overflow-auto">
         {state === 'idle' && (
