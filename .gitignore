@@ -25,3 +25,7 @@ dist-ssr
 
 # Built wasm artifact (produced by build pipeline)
 public/validator.wasm
+
+# Playwright CLI session/trace artifacts (`tracing-start`, attached sessions)
+.playwright
+.playwright-cli
