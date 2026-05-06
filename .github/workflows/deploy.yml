@@ -106,9 +106,15 @@ jobs:
         id: cache-swiftly
         uses: actions/cache@v4
         with:
+          # Both paths are required: ~/.swiftly is swiftly's metadata + shim
+          # binaries, but ~/.local/share/swiftly/toolchains/ is where the
+          # actual Swift toolchain lives. Caching only the former leaves
+          # `swift --version` failing with "Toolchain X could not be located
+          # in /home/runner/.local/share/swiftly/toolchains/X/usr/bin".
           path: |
             /home/runner/.swiftly
-          key: swiftly-${{ runner.os }}-${{ runner.arch }}-${{ env.SWIFT_VERSION }}-v1
+            /home/runner/.local/share/swiftly
+          key: swiftly-deploy-${{ runner.os }}-${{ runner.arch }}-${{ env.SWIFT_VERSION }}-v2
 
       - name: Install swiftly + Swift ${{ env.SWIFT_VERSION }}
         if: steps.cache-swiftly.outputs.cache-hit != 'true'
