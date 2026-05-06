@@ -90,18 +90,22 @@ function buildBjsStubs(): WebAssembly.ModuleImports {
  * executable. Hide `_start` from the runtime's reflective check while leaving
  * everything else intact, so we can still invoke `_start` ourselves through
  * the WASI shim afterwards.
+ *
+ * NOTE: we cannot wrap `instance.exports` in a `Proxy` and lie about `_start`
+ * via `get`/`has` traps. The WebAssembly Instance namespace is a frozen object
+ * whose properties are non-configurable + non-writable, and the JS Proxy
+ * invariants forbid a `get` trap from returning `undefined` for such a
+ * property — V8 / JSC throw `'get' on proxy: property '_start' is a read-only
+ * and non-configurable data property on the proxy target ...`. So instead we
+ * build a plain object that mirrors every export *except* `_start`, and hand
+ * that to the runtime.
  */
 function hideStartExport(instance: WebAssembly.Instance): WebAssembly.Instance {
-  const filteredExports = new Proxy(instance.exports, {
-    get(target, prop, receiver) {
-      if (prop === '_start') return undefined
-      return Reflect.get(target, prop, receiver)
-    },
-    has(target, prop) {
-      if (prop === '_start') return false
-      return Reflect.has(target, prop)
-    },
-  })
+  const filteredExports: Record<string, unknown> = {}
+  for (const key of Object.keys(instance.exports)) {
+    if (key === '_start') continue
+    filteredExports[key] = (instance.exports as Record<string, unknown>)[key]
+  }
   return new Proxy(instance, {
     get(target, prop, receiver) {
       if (prop === 'exports') return filteredExports
