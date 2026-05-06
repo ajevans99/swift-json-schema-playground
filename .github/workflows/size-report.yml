@@ -82,9 +82,16 @@ jobs:
         id: cache-swiftly
         uses: actions/cache@v4
         with:
+          # `swiftly init` lives under ~/.swiftly but the actual toolchain
+          # is unpacked to ~/.local/share/swiftly/toolchains — caching only
+          # the former leaves a half-install (swiftly+env.sh restored, but
+          # `swift` itself missing). Cache both. Key is workflow-scoped to
+          # avoid sharing a (potentially incomplete) cache entry with the
+          # deploy workflow.
           path: |
             /home/runner/.swiftly
-          key: swiftly-${{ runner.os }}-${{ runner.arch }}-${{ env.SWIFT_VERSION }}-v1
+            /home/runner/.local/share/swiftly
+          key: swiftly-size-report-${{ runner.os }}-${{ runner.arch }}-${{ env.SWIFT_VERSION }}-v1
 
       - name: Install swiftly + Swift ${{ env.SWIFT_VERSION }}
         if: steps.cache-swiftly.outputs.cache-hit != 'true'
