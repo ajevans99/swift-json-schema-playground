@@ -14,11 +14,6 @@ package, compiled to WebAssembly with [SwiftWasm](https://swiftwasm.org) and
 hosted in a Web Worker. No server, no round-trip — the whole validator runs in
 your browser.
 
-> **Live demo:** <https://\<owner\>.github.io/swift-json-schema-playground/>
->
-> Replace `<owner>` with your GitHub username/org once you've pushed the repo
-> and enabled Pages (see [Deployment](#deployment)).
-
 ## Features
 
 - **As-you-type validation** with a ~300 ms debounce so you don't pay for a
