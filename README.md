@@ -1,7 +1,7 @@
 # swift-json-schema-playground
 
-[![Deploy to GitHub Pages](https://github.com/<owner>/swift-json-schema-playground/actions/workflows/deploy.yml/badge.svg)](https://github.com/<owner>/swift-json-schema-playground/actions/workflows/deploy.yml)
-[![GitHub Pages](https://img.shields.io/badge/demo-GitHub%20Pages-blue)](https://<owner>.github.io/swift-json-schema-playground/)
+[![Deploy to GitHub Pages](https://github.com/ajevans99/swift-json-schema-playground/actions/workflows/deploy.yml/badge.svg)](https://github.com/ajevans99/swift-json-schema-playground/actions/workflows/deploy.yml)
+[![GitHub Pages](https://img.shields.io/badge/demo-GitHub%20Pages-blue)](https://ajevans99.github.io/swift-json-schema-playground/)
 
 An in-browser playground for [JSON Schema](https://json-schema.org). You paste a
 schema in one pane and an instance in the other, and the page tells you, as you
