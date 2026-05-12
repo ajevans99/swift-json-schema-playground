@@ -11,7 +11,7 @@ let package = Package(
     .executable(name: "JSONSchemaWasm", targets: ["JSONSchemaWasm"])
   ],
   dependencies: [
-    .package(name: "swift-json-schema", path: "../../swift-json-schema"),
+    .package(url: "https://github.com/ajevans99/swift-json-schema", exact: "0.13.0"),
     .package(url: "https://github.com/swiftwasm/JavaScriptKit", from: "0.51.0"),
   ],
   targets: [

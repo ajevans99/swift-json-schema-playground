@@ -36,7 +36,7 @@ your browser.
 | Styling          | [Tailwind CSS v4](https://tailwindcss.com) (CSS-first, no `tailwind.config.js`) |
 | Editor           | [`@monaco-editor/react`](https://github.com/suren-atoyan/monaco-react) (Monaco 0.55) |
 | Tests            | [Vitest 4](https://vitest.dev) + Testing Library + jsdom                |
-| Validator        | [`swift-json-schema`](https://github.com/ajevans99/swift-json-schema), Swift 6.3.1 |
+| Validator        | [`swift-json-schema` 0.13.0](https://github.com/ajevans99/swift-json-schema/releases/tag/v0.13.0), Swift 6.3.1 |
 | Swift→Wasm       | [SwiftWasm](https://swiftwasm.org) `swift-6.3.1-RELEASE_wasm` SDK, managed via [`swiftly`](https://github.com/swiftlang/swiftly) |
 | Swift↔JS bridge  | [JavaScriptKit 0.51](https://github.com/swiftwasm/JavaScriptKit)        |
 | WASI host        | [`@bjorn3/browser_wasi_shim`](https://github.com/bjorn3/browser_wasi_shim) |
@@ -87,7 +87,7 @@ take long enough to drop a frame.
 │   └── index.css                  # Tailwind v4 entry
 ├── tests/                         # Vitest unit tests
 └── wasm/                          # SwiftPM project that builds the validator
-    ├── Package.swift              # depends on ../../swift-json-schema
+    ├── Package.swift              # pins swift-json-schema
     ├── Sources/JSONSchemaWasm/main.swift
     └── build.sh                   # builds and copies wasm to ../public/
 ```
@@ -105,20 +105,12 @@ For rebuilding the wasm validator:
   **Swift 6.3.1** — the system `/usr/bin/swift` from Xcode does **not** work
   because it lacks the WebAssembly LLVM backend.
 - The matching **SwiftWasm SDK** (`swift-6.3.1-RELEASE_wasm`).
-- A local checkout of [`swift-json-schema`](https://github.com/ajevans99/swift-json-schema)
-  as a sibling of this repo (i.e. `../swift-json-schema` relative to the
-  playground root). This is required because `wasm/Package.swift` declares a
-  path-based dependency on it.
-
 If either Swift prerequisite is missing, `wasm/build.sh` fails fast and prints
 the exact `swiftly install …` / `swift sdk install …` commands you need.
 
 ## Local development
 
 ```bash
-# 0. (one-time) Clone the validator as a sibling of this repo:
-#       git clone https://github.com/ajevans99/swift-json-schema ../swift-json-schema
-
 # 1. Build the wasm validator (only needed once, or after Swift changes).
 cd wasm && ./build.sh && cd ..
 
@@ -150,8 +142,7 @@ rebuilds it on every deploy.
 Pushes to `main` trigger
 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml), which:
 
-1. Checks out this repo and `swift-json-schema` as siblings under
-   `$GITHUB_WORKSPACE/`, so the path-based SwiftPM dependency resolves.
+1. Checks out this repo.
 2. Installs Swift 6.3.1 via `swiftly` (cached) and the pinned SwiftWasm SDK
    (cached).
 3. Runs `wasm/build.sh` to produce `public/validator.wasm`.
@@ -164,14 +155,8 @@ Pushes to `main` trigger
 
 1. Push this repo to GitHub.
 2. **Settings → Pages → Build and deployment → Source = "GitHub Actions"**.
-3. If your fork of `swift-json-schema` is **private**, add a deploy token /
-   PAT and pass it to the second `actions/checkout` step in the workflow
-   via its `token:` input — the default `GITHUB_TOKEN` only has access to
-   the current repo. If the validator repo is public (the default), no extra
-   setup is needed.
-
-If your validator fork lives at a different path or ref, edit the
-`VALIDATOR_REPO` / `VALIDATOR_REF` env vars at the top of the workflow.
+3. Keep the `swift-json-schema` version in `wasm/Package.swift` pinned to the
+   release you want to deploy.
 
 ## Why is the wasm so big?
 
