@@ -24,7 +24,7 @@ Living document of friction points and proposed API improvements discovered whil
 
 ### No prebuilt SwiftWasm artifact ⇒ heavy CI plumbing for any wasm-targeting consumer
 - **Context**: GitHub Actions workflow that builds `JSONSchemaWasm` (the playground's wasm wrapper) on every push to `main` so it can be deployed to GitHub Pages.
-- **Friction**: To produce a single ~MB-sized `validator.wasm`, CI has to: (1) check out a *second* repo (this one) as a path-based SwiftPM sibling, (2) install swiftly, (3) install a full Swift toolchain, (4) install the SwiftWasm SDK artifactbundle (~hundreds of MB, slow even with caching), (5) run `swift build --swift-sdk wasm32-unknown-wasip1`. Cold builds are minutes long; cache invalidation on toolchain bumps means every Swift release rebuilds from scratch. None of this work is specific to the *consuming* app — every JS/web project that wants to use `swift-json-schema` would repeat all of it.
+- **Friction**: To produce a single ~MB-sized `validator.wasm`, CI has to: (1) install swiftly, (2) install a full Swift toolchain, (3) install the SwiftWasm SDK artifactbundle (~hundreds of MB, slow even with caching), (4) resolve/build the SwiftPM package graph, and (5) run `swift build --swift-sdk wasm32-unknown-wasip1`. Cold builds are minutes long; cache invalidation on toolchain bumps means every Swift release rebuilds from scratch. None of this work is specific to the *consuming* app — every JS/web project that wants to use `swift-json-schema` would repeat all of it.
 - **Proposal**: Publish a prebuilt, JS-callable `validator.wasm` (and matching `.d.ts`) as a GitHub Release asset (or an npm package) for each tagged release of `swift-json-schema`. Even a minimal "validate(schema, instance) → errors[]" surface would let downstream web consumers `npm install @swift-json-schema/validator-wasm` (or `curl` a release asset) and skip the entire Swift toolchain dance. The upstream repo is the only place that has all the context to build it correctly anyway.
 - **Discovered in**: `swift-wasm-package` / `.github/workflows/deploy.yml`
 
@@ -74,19 +74,3 @@ Living document of friction points and proposed API improvements discovered whil
   1. `Properties` / `PatternProperties` / `AdditionalProperties`: emit annotation before throw.
   2. `AnyOf` / `OneOf` (and audit `If` / `Then` / `Else` / `AllOf`): only merge `subAnnotations` from passing branches.
 - **Discovered in**: `swift-json-schema-playground` OpenAPI 3.1 example. Reproducible standalone with the OpenAPI 3.1 schema + the sample petstore in `src/examples/registry.ts:OPENAPI_PETSTORE`.
-
-### `$dynamicRef: "#meta"` doesn't resolve to the dialect's bundled meta-schema
-- **Context**: Validating any instance against the OpenAPI 3.1 meta-schema. OpenAPI's `$defs/parameter.schema` is `{"$dynamicRef": "#meta"}` and the JSON Schema 2020-12 meta-schema declares `$dynamicAnchor: "meta"` on `https://json-schema.org/draft/2020-12/schema`. The lookup should resolve through the dynamic-scope chain.
-- **Friction**: `Schema(instance:dialect: .draft2020_12)` does NOT pre-load the dialect's own meta-schema as a remote schema. So when a user-supplied schema does `$dynamicRef: "#meta"`, the resolver iterates `context.dynamicScopes` (line 155 of `Keywords+Reference.swift`), finds nothing, falls back to a regular ref lookup, and fails with `Unable to resolve $ref '...#meta'`. Users have to manually pass the meta-schema via `remoteSchemas:` even though the validator already ships it as a bundled resource.
-- **Proposal**: Auto-register the bundled `Bundle.jsonSchemaResources/draft2020-12/schema.json` (and its 7 vocab sub-schemas) into the validator's reference resolver / dynamic-scope chain in `Schema.init(instance:dialect:)`. `Dialect.loadMetaSchema()` already does this for the meta-schema validation path; the same registration should happen for normal user-schema validation. Alternative: expose a public `Dialect.metaVocabularies: [String: JSONValue]` accessor so consumers don't have to duplicate the bundle-walking logic.
-- **Discovered in**: `swift-json-schema-playground` OpenAPI 3.1 example. Test-suite confirmation: 10 of 44 `dynamicRef.json` tests in the official JSON-Schema-Test-Suite fail today (the file is currently in `unsupportedFilePaths` of `Tests/JSONSchemaTests/JSONSchemaTestSuite.swift`).
-
-### Test suite has hidden 10 failing `dynamicRef.json` tests via `unsupportedFilePaths`
-- **Context**: `Tests/JSONSchemaTests/JSONSchemaTestSuite.swift:11-13` skips `dynamicRef.json` from the official 2020-12 suite. The README claims ~99% pass rate.
-- **Friction**: Users see "passes the official test suite" but in practice the 10 dynamicRef failures bite immediately when validating real-world schemas (OpenAPI 3.1, AsyncAPI 3.x, JSON-LD context schemas — anything modern). Failing categories include:
-  - "behaves like a normal $ref to $anchor" (fallback to lexical resolution)
-  - "after leaving a dynamic scope" (scope tracking)
-  - "$dynamicRef skips over intermediate resources" (multi-step resolution)
-  - "multiple dynamic paths to the $dynamicRef keyword"
-- **Proposal**: Either fix dynamic-ref properly (real work) or update the README to be honest about coverage. Removing `dynamicRef.json` from `unsupportedFilePaths` and accepting the 10 failures as "known issues" with `unsupportedTests` entries would surface them in CI.
-- **Discovered in**: `swift-json-schema-playground` while debugging OpenAPI 3.1; verified by removing the skip + running `swift test --filter JSONSchemaTestSuite`.

@@ -10,24 +10,8 @@
 #   1. Push this repo to GitHub.
 #   2. In the repo: Settings → Pages → Build and deployment → Source =
 #      "GitHub Actions". (No need to pre-create a branch.)
-#   3. If your fork of `swift-json-schema` lives at a different path, update
-#      `VALIDATOR_REPO` (and/or `VALIDATOR_REF`) below. If that repo is
-#      private, also add a deploy token / PAT and pass it to the second
-#      `actions/checkout` via the `token:` input — the default `GITHUB_TOKEN`
-#      can only read the current repo.
-#
-# How the two-checkout layout works:
-#   `wasm/Package.swift` declares a path-based dependency on
-#   `../../swift-json-schema`. We check both repos out as siblings under
-#   `$GITHUB_WORKSPACE/`:
-#
-#       $GITHUB_WORKSPACE/
-#       ├── playground/            <- this repo
-#       │   └── wasm/Package.swift  (looks for ../../swift-json-schema)
-#       └── swift-json-schema/     <- sibling, checked out by step #2
-#
-#   From inside `playground/wasm/`, `../../swift-json-schema` resolves to
-#   `$GITHUB_WORKSPACE/swift-json-schema`. ✅
+#   3. Keep `wasm/Package.swift` pinned to the intended `swift-json-schema`
+#      release.
 # =============================================================================
 
 name: Deploy to GitHub Pages
@@ -49,11 +33,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Sibling Swift package that wasm/Package.swift depends on via a relative
-  # path. Edit if your fork lives elsewhere.
-  VALIDATOR_REPO: ajevans99/swift-json-schema
-  VALIDATOR_REF: main
-
   # Must match wasm/build.sh.
   SWIFT_VERSION: "6.3.1"
 
@@ -76,18 +55,9 @@ jobs:
         with:
           path: playground
 
-      - name: Checkout swift-json-schema (sibling repo for wasm/Package.swift path dep)
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.VALIDATOR_REPO }}
-          ref: ${{ env.VALIDATOR_REF }}
-          path: swift-json-schema
-
-      - name: Verify sibling layout
+      - name: Verify checkout
         run: |
           set -euxo pipefail
-          ls -la
-          test -f swift-json-schema/Package.swift
           test -f playground/wasm/Package.swift
           test -x playground/wasm/build.sh
 
